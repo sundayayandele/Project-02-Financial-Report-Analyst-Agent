@@ -1,0 +1,70 @@
+name: 📊 Financial Report Analyst Agent
+
+# ──────────────────────────────────────────────
+# Triggers
+# ──────────────────────────────────────────────
+on:
+  schedule:
+    # 1st of every month at 06:00 UTC — before European markets open
+    - cron: "0 6 1 * *"
+
+  # Manual trigger from the Actions tab (great for first run / testing)
+  workflow_dispatch:
+
+# ──────────────────────────────────────────────
+# Permissions
+# ──────────────────────────────────────────────
+permissions:
+  contents: write    # commit reports/financial/brief-YYYY-MM.md
+  issues: write      # optional: open issues for critical risk flags
+
+jobs:
+  financial-analyst:
+    name: Run Financial Report Analyst
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Python ────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ── 3. Dependencies ──────────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. Ensure output directory exists ────────────────────────
+      - name: Create reports directory
+        run: mkdir -p reports/financial
+
+      # ── 5. Run the agent ─────────────────────────────────────────
+      - name: Run Financial Report Analyst Agent
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          echo "──────────────────────────────────────────"
+          echo "📊 Starting Financial Report Analyst Agent"
+          echo "   Repository : $GITHUB_REPOSITORY"
+          echo "   Timestamp  : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "──────────────────────────────────────────"
+          python src/agent.py
+
+      # ── 6. Upload reports as workflow artifact ────────────────────
+      - name: Upload financial reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: financial-brief-${{ github.run_id }}
+          path: reports/financial/
+          retention-days: 365    # keep 12 months of briefs
